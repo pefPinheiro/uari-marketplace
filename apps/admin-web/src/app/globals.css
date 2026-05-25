@@ -1,14 +1,43 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Cores da Paleta Oficial UÁRI */
+  --color-marrom-premium: #3E2723;
+  --color-roxo-digital: #6A1B9A;
+  --color-verde-esmeralda: #2E7D32;
+  --color-laranja-acao: #FF6D00;
+  --color-off-white: #F5F5F5;
+
+  /* Cores do Sistema Semântico */
+  --background: var(--color-off-white);
+  --foreground: var(--color-marrom-premium);
+  
+  --primary: var(--color-roxo-digital);
+  --success: var(--color-verde-esmeralda);
+  --action: var(--color-laranja-acao);
+  
+  --card-bg: #ffffff;
+  --border-color: rgba(62, 39, 35, 0.08);
+  --shadow-sm: 0 2px 8px rgba(62, 39, 35, 0.03);
+  --shadow-md: 0 8px 24px rgba(62, 39, 35, 0.06);
+  --shadow-lg: 0 16px 40px rgba(62, 39, 35, 0.1);
+  
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #18110F; /* Marrom ultra profundo premium em vez do preto genérico */
+    --foreground: var(--color-off-white);
+    
+    --card-bg: #221815;
+    --border-color: rgba(245, 245, 245, 0.08);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.15);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.25);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.35);
   }
 }
+
 
 html {
   height: 100%;
