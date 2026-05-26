@@ -4,7 +4,8 @@
   "private": true,
   "description": "Monorepo do UÁRI Marketplace",
   "workspaces": [
-    "apps/*",
+    "apps/lojista-web",
+    "apps/admin-web",
     "packages/*"
   ],
   "scripts": {
