@@ -349,6 +349,8 @@ const styles = StyleSheet.create({
   splashLogo: {
     width: width * 0.65,
     height: 180,
+    borderRadius: 24,
+    overflow: 'hidden',
     marginBottom: 16,
   },
   splashSlogan: {
