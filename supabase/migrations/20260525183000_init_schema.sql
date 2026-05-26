@@ -360,6 +360,9 @@ CREATE POLICY "Leitura pública de perfis" ON profiles
 CREATE POLICY "Usuários podem atualizar seus próprios perfis" ON profiles 
     FOR UPDATE USING (auth.uid() = id);
 
+CREATE POLICY "Usuários podem criar seu próprio perfil" ON profiles
+    FOR INSERT WITH CHECK (auth.uid() = id);
+
 -- 4.2 Lojas (stores)
 CREATE POLICY "Leitura pública de lojas" ON stores 
     FOR SELECT USING (true);
