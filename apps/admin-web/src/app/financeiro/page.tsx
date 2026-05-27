@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 
 interface WithdrawalRequest {
   id: string;
@@ -21,13 +22,75 @@ export default function FinanceiroPage() {
     { id: 'w5', storeName: 'Empório do Norte', date: '20 Mai, 2026', pixKey: 'emporio@tefe.am.br', grossAmount: 900.00, feePercentage: 10, status: 'completed' }
   ]);
 
-  const handlePayout = (id: string) => {
+  // Carregar saques do Supabase
+  useEffect(() => {
+    fetchWithdrawals();
+  }, []);
+
+  const fetchWithdrawals = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('withdrawals')
+        .select(`
+          id,
+          amount,
+          pix_key,
+          status,
+          created_at,
+          stores (
+            name
+          )
+        `);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const mapped: WithdrawalRequest[] = data.map((item: any) => {
+          const status: 'pending' | 'completed' = item.status === 'requested' ? 'pending' : 'completed';
+          return {
+            id: item.id,
+            storeName: item.stores?.name || 'Lojista local',
+            date: new Date(item.created_at).toLocaleDateString('pt-BR'),
+            pixKey: item.pix_key,
+            grossAmount: Number(item.amount),
+            feePercentage: 12.5,
+            status: status
+          };
+        });
+        setRequests(mapped);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar saques do Supabase:', err);
+    }
+  };
+
+  const handlePayout = async (id: string) => {
     const req = requests.find(r => r.id === id);
     if (!req) return;
     
-    if (confirm(`Deseja efetuar a liberação Pix de R$ ${(req.grossAmount * (1 - req.feePercentage / 100)).toFixed(2)} para ${req.storeName}?`)) {
-      setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'completed' } : r));
-      alert('⚡ Pix enviado com sucesso! Solicitação finalizada.');
+    const netAmount = req.grossAmount * (1 - req.feePercentage / 100);
+    
+    if (confirm(`Deseja efetuar a liberação Pix de R$ ${netAmount.toFixed(2)} para ${req.storeName}?`)) {
+      try {
+        // Se for um ID de banco real (UUID), atualiza no Supabase para 'approved'
+        if (!id.startsWith('w')) {
+          const { error } = await supabase
+            .from('withdrawals')
+            .update({ 
+              status: 'approved',
+              processed_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+          if (error) throw error;
+        }
+
+        setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'completed' } : r));
+        alert('⚡ Pix enviado com sucesso! Solicitação finalizada no banco Supabase.');
+      } catch (err) {
+        console.error('Erro ao autorizar resgate no Supabase:', err);
+        alert('Erro ao registrar liberação financeira no banco Supabase.');
+      }
     }
   };
 

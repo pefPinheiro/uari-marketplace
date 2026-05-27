@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 
 // Interfaces
 interface ProductRequest {
@@ -36,50 +37,71 @@ export default function CuradoriaProdutosPage() {
   ];
 
   // Solicitações pendentes enviadas pelos lojistas de Tefé
-  const [requests, setRequests] = useState<ProductRequest[]>([
-    {
-      id: 'req-1',
-      storeName: 'Empório do Norte',
-      suggestedTitle: 'Óleo de Copaíba Puro 100ml',
-      suggestedPrice: 35.00,
-      suggestedCategory: 'Regional',
-      submittedAt: 'Hoje, 09:30',
-      lojistaComment: 'Extraído de forma 100% sustentável no Médio Solimões. Excelente cicatrizante.',
-      enrichedTitle: 'Óleo de Copaíba Puro da Amazônia 100ml',
-      enrichedPrice: 35.00,
-      enrichedCategory: 'Regional',
-      enrichedDescription: 'Óleo de copaíba 100% puro e natural, extraído artesanalmente nas florestas do município de Tefé, Amazonas. Fiel aliado para cuidados terapêuticos e hidratação profunda da pele, com propriedades cicatrizantes e anti-inflamatórias comprovadas pelas tradições ribeirinhas.',
-      selectedImageId: 'img-copaiba'
-    },
-    {
-      id: 'req-2',
-      storeName: 'Açaí de Tefé',
-      suggestedTitle: 'Polpa de Açaí Especial Fina 5L',
-      suggestedPrice: 110.00,
-      suggestedCategory: 'Alimentos',
-      submittedAt: 'Ontem, 16:45',
-      lojistaComment: 'Batido na hora, sem conservantes, direto da feira de Tefé.',
-      enrichedTitle: 'Polpa de Açaí Especial Orgânico - Galão 5 Litros',
-      enrichedPrice: 110.00,
-      enrichedCategory: 'Alimentos',
-      enrichedDescription: 'Verdadeiro açaí puríssimo de Tefé, extraído de frutos colhidos de forma agroecológica e batido sob rigorosos padrões de qualidade local. Textura extremamente cremosa, rica em antioxidantes, ideal para revenda, bufês ou consumo familiar vigoroso.',
-      selectedImageId: 'img-acai'
-    },
-    {
-      id: 'req-3',
-      storeName: 'Artesanato Tefé',
-      suggestedTitle: 'Cesto Trançado de Tucumã',
-      suggestedPrice: 89.00,
-      suggestedCategory: 'Artesanato',
-      submittedAt: '25 Mai, 11:20',
-      lojistaComment: 'Trabalho feito à mão pela comunidade ribeirinha do lago de Tefé.',
-      enrichedTitle: 'Cesto Organizador de Fibra de Tucumã Tecido à Mão',
-      enrichedPrice: 89.00,
-      enrichedCategory: 'Artesanato',
-      enrichedDescription: 'Peça exclusiva de artesanato tefeense, tecida à mão por artesãs tradicionais utilizando a nobre fibra extraída da palmeira de Tucumã. Possui tingimento natural com padrões ancestrais geométricos, servindo como elemento decorativo de luxo ou organizador rústico.',
-      selectedImageId: 'img-basket'
+  const [requests, setRequests] = useState<ProductRequest[]>([]);
+
+  // Carregar rascunhos de produtos do Supabase
+  useEffect(() => {
+    fetchPendingProducts();
+  }, []);
+
+  const fetchPendingProducts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          id,
+          title,
+          description,
+          current_price,
+          category,
+          created_at,
+          stores (
+            name
+          )
+        `)
+        .eq('status', 'draft');
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const mapped: ProductRequest[] = data.map((item: any) => {
+          let defaultImgId = 'img-copaiba';
+          const cat = (item.category || '').toLowerCase();
+          if (cat.includes('açai') || cat.includes('aliment') || cat.includes('bebi')) {
+            defaultImgId = 'img-acai';
+          } else if (cat.includes('artesanato') || cat.includes('cesto')) {
+            defaultImgId = 'img-basket';
+          } else if (cat.includes('castanha') || cat.includes('nozes') || cat.includes('para')) {
+            defaultImgId = 'img-nuts';
+          } else if (cat.includes('sabonete') || cat.includes('cosmetic') || cat.includes('saude')) {
+            defaultImgId = 'img-soap';
+          }
+
+          return {
+            id: item.id,
+            storeName: item.stores?.name || 'Lojista local',
+            suggestedTitle: item.title,
+            suggestedPrice: Number(item.current_price || 0),
+            suggestedCategory: item.category || 'Regional',
+            submittedAt: new Date(item.created_at).toLocaleDateString('pt-BR'),
+            lojistaComment: 'Rascunho de lote aguardando homologação oficial da plataforma.',
+            enrichedTitle: item.title,
+            enrichedPrice: Number(item.current_price || 0),
+            enrichedCategory: item.category || 'Regional',
+            enrichedDescription: item.description || '',
+            selectedImageId: defaultImgId
+          };
+        });
+        setRequests(mapped);
+        
+        if (mapped.length > 0) {
+          setSelectedRequestId(mapped[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao carregar produtos pendentes do Supabase:', err);
     }
-  ]);
+  };
 
   // Lista de produtos já homologados e publicados na vitrine
   const [approvedProducts, setApprovedProducts] = useState<any[]>([
@@ -118,47 +140,84 @@ export default function CuradoriaProdutosPage() {
   };
 
   // Aprovar e homologar o produto
-  const handleApproveProduct = (e: React.FormEvent) => {
+  const handleApproveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeRequest) return;
 
-    // Remove das pendências
-    setRequests(prev => prev.filter(r => r.id !== activeRequest.id));
+    try {
+      // Se for um ID de banco real (UUID), atualiza no Supabase
+      if (!activeRequest.id.startsWith('req-')) {
+        const { error } = await supabase
+          .from('products')
+          .update({
+            title: activeRequest.enrichedTitle,
+            current_price: activeRequest.enrichedPrice,
+            category: activeRequest.enrichedCategory,
+            description: activeRequest.enrichedDescription,
+            status: 'published',
+            images: [activeRequest.selectedImageId]
+          })
+          .eq('id', activeRequest.id);
 
-    // Adiciona na lista de publicados na vitrine
-    const newPublished = {
-      id: `pub-${Date.now()}`,
-      title: activeRequest.enrichedTitle,
-      storeName: activeRequest.storeName,
-      price: activeRequest.enrichedPrice,
-      category: activeRequest.enrichedCategory,
-      approvedAt: 'Agora mesmo',
-      imageId: activeRequest.selectedImageId
-    };
-    setApprovedProducts(prev => [newPublished, ...prev]);
-    showNotification(`🎉 Produto "${activeRequest.enrichedTitle}" aprovado e publicado com sucesso na vitrine UÁRI!`);
+        if (error) throw error;
+      }
 
-    // Seleciona a próxima solicitação se houver
-    const remaining = requests.filter(r => r.id !== activeRequest.id);
-    if (remaining.length > 0) {
-      setSelectedRequestId(remaining[0].id);
-    } else {
-      setSelectedRequestId(null);
+      // Remove das pendências
+      setRequests(prev => prev.filter(r => r.id !== activeRequest.id));
+
+      // Adiciona na lista de publicados na vitrine
+      const newPublished = {
+        id: activeRequest.id,
+        title: activeRequest.enrichedTitle,
+        storeName: activeRequest.storeName,
+        price: activeRequest.enrichedPrice,
+        category: activeRequest.enrichedCategory,
+        approvedAt: 'Agora mesmo',
+        imageId: activeRequest.selectedImageId
+      };
+      setApprovedProducts(prev => [newPublished, ...prev]);
+      showNotification(`🎉 Produto "${activeRequest.enrichedTitle}" aprovado e publicado com sucesso na vitrine UÁRI!`);
+
+      // Seleciona a próxima solicitação se houver
+      const remaining = requests.filter(r => r.id !== activeRequest.id);
+      if (remaining.length > 0) {
+        setSelectedRequestId(remaining[0].id);
+      } else {
+        setSelectedRequestId(null);
+      }
+    } catch (err) {
+      console.error('Erro ao aprovar produto no Supabase:', err);
+      showNotification('Erro ao salvar aprovação no banco Supabase.', 'error' as any);
     }
   };
 
   // Rejeitar proposta / Solicitar ajustes
-  const handleRejectRequest = () => {
+  const handleRejectRequest = async () => {
     if (!activeRequest) return;
     const comment = prompt(`Informe as correções que o lojista "${activeRequest.storeName}" precisa fazer em "${activeRequest.suggestedTitle}":`, 'Melhorar o preço sugerido ou revisar o lote disponível.');
     if (comment === null) return; // cancelado pelo admin
 
-    setRequests(prev => prev.filter(r => r.id !== activeRequest.id));
-    showNotification(`Rejeição enviada! O lojista da loja "${activeRequest.storeName}" foi notificado para corrigir o produto.`, 'info');
+    try {
+      // Se for um ID de banco real (UUID), atualiza no Supabase para 'rejected'
+      if (!activeRequest.id.startsWith('req-')) {
+        const { error } = await supabase
+          .from('products')
+          .update({ status: 'rejected' })
+          .eq('id', activeRequest.id);
 
-    // Seleciona a próxima
-    const remaining = requests.filter(r => r.id !== activeRequest.id);
-    setSelectedRequestId(remaining.length > 0 ? remaining[0].id : null);
+        if (error) throw error;
+      }
+
+      setRequests(prev => prev.filter(r => r.id !== activeRequest.id));
+      showNotification(`Rejeição enviada! O lojista da loja "${activeRequest.storeName}" foi notificado para corrigir o produto.`, 'info');
+
+      // Seleciona a próxima
+      const remaining = requests.filter(r => r.id !== activeRequest.id);
+      setSelectedRequestId(remaining.length > 0 ? remaining[0].id : null);
+    } catch (err) {
+      console.error('Erro ao rejeitar produto no Supabase:', err);
+      showNotification('Erro ao salvar rejeição no banco Supabase.', 'error' as any);
+    }
   };
 
   // Renderizador das ilustrações vetoriais em SVG

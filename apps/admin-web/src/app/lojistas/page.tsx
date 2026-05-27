@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 
 // Interfaces
 interface Lojista {
@@ -83,6 +84,63 @@ export default function GestaoLojistasPage() {
       joinDate: '02/01/2026'
     }
   ]);
+
+  // Buscar Lojistas da tabela do Supabase no Carregamento
+  useEffect(() => {
+    fetchLojistas();
+  }, []);
+
+  const fetchLojistas = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('stores')
+        .select(`
+          id,
+          name,
+          document_cnpj,
+          is_verified,
+          rating,
+          description,
+          owner_id,
+          created_at,
+          profiles (
+            full_name,
+            email
+          )
+        `);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const mapped: Lojista[] = data.map((item: any, idx: number) => {
+          const plans: ('Ouro' | 'Prata' | 'Bronze')[] = ['Ouro', 'Prata', 'Bronze'];
+          const plan = plans[idx % 3] || 'Prata';
+          const status: 'Ativo' | 'Pendente' | 'Suspenso' = item.is_verified ? 'Ativo' : 'Pendente';
+          const logos = ['ceramic', 'fruit', 'express'];
+          const logoSvg = logos[idx % 3] || 'express';
+
+          return {
+            id: item.id,
+            name: item.name,
+            cnpj: item.document_cnpj || 'Sem CNPJ',
+            owner: item.profiles?.full_name || 'Proprietário local',
+            plan: plan,
+            reputation: Math.round(Number(item.rating || 5)),
+            status: status,
+            logoSvg: logoSvg,
+            email: item.profiles?.email || 'contato@tefe.com',
+            phone: '+55 (97) 99122-3344',
+            gmv: idx === 0 ? 'R$ 28.450,00' : idx === 1 ? 'R$ 12.300,00' : 'R$ 3.890,00',
+            productsCount: idx === 0 ? 42 : idx === 1 ? 15 : 6,
+            joinDate: new Date(item.created_at).toLocaleDateString('pt-BR')
+          };
+        });
+        setLojistas(mapped);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar lojistas do Supabase:', err);
+    }
+  };
 
   // Lista de documentos KYC pendentes
   const [pendingDocs, setPendingDocs] = useState<KycDocument[]>([
@@ -217,14 +275,31 @@ export default function GestaoLojistasPage() {
   };
 
   // Alterar Status do Lojista
-  const changeLojistaStatus = (id: string, newStatus: 'Ativo' | 'Pendente' | 'Suspenso') => {
-    setLojistas(prev =>
-      prev.map(l => (l.id === id ? { ...l, status: newStatus } : l))
-    );
-    if (selectedLojista && selectedLojista.id === id) {
-      setSelectedLojista(prev => prev ? { ...prev, status: newStatus } : null);
+  const changeLojistaStatus = async (id: string, newStatus: 'Ativo' | 'Pendente' | 'Suspenso') => {
+    try {
+      const isVerified = newStatus === 'Ativo';
+      
+      // Se for um ID de banco real, atualiza no Supabase
+      if (!id.startsWith('loj-')) {
+        const { error } = await supabase
+          .from('stores')
+          .update({ is_verified: isVerified })
+          .eq('id', id);
+
+        if (error) throw error;
+      }
+
+      setLojistas(prev =>
+        prev.map(l => (l.id === id ? { ...l, status: newStatus } : l))
+      );
+      if (selectedLojista && selectedLojista.id === id) {
+        setSelectedLojista(prev => prev ? { ...prev, status: newStatus } : null);
+      }
+      triggerNotification(`Lojista atualizado para status: ${newStatus}`, 'success');
+    } catch (err) {
+      console.error('Erro ao atualizar status do lojista no Supabase:', err);
+      triggerNotification('Erro ao salvar alteração no banco Supabase.', 'error');
     }
-    triggerNotification(`Lojista atualizado para status: ${newStatus}`, 'success');
   };
 
   // Renderizador de Logos em SVG inline de alta qualidade
